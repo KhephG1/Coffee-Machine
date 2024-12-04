@@ -1,28 +1,69 @@
-#include <I2S.h>
-#include <Arduino.h>
-#define SAMPLE_RATE     (44100)
-#define I2S_SCK_IO      (25)
-#define I2S_WS_IO       (16)
-#define I2S_DI_IO       (26)
-#define DATA_BIT        (16)
-#define MODE_PIN        (4)
+/*
+ This example reads audio data from an InvenSense ICS-43432 I2S microphone
+ breakout board, and prints out the spectrum to the Serial Monitor. The
+ Serial Plotter built into the Arduino IDE (Tools -> Serial Plotter) can be
+ used to plot the audio amplitude data.
 
+ Circuit:
+ * Arduino Zero, MKR Zero or MKR1000 board
+ * ICS-43432:
+   * GND connected GND
+   * 3.3V connected 3.3V (Zero) or VCC (MKR1000, MKR Zero)
+   * WS connected to pin 0 (Zero) or pin 3 (MKR1000, MKR Zero)
+   * CLK connected to pin 1 (Zero) or pin 2 (MKR1000, MKR Zero)
+   * SD connected to pin 9 (Zero) or pin A6 (MKR1000, MKR Zero)
 
-char i2sReadrawBuff[100];
+ created 21 November 2016
+ by Sandeep Mistry
+ */
+
+#include <ArduinoSound.h>
+
+// sample rate for the input
+const int sampleRate = 8000;
+
+// size of the FFT to compute
+const int fftSize = 128;
+
+// size of the spectrum output, half of FFT size
+const int spectrumSize = fftSize / 2;
+
+// array to store spectrum output
+int spectrum[spectrumSize];
+
+// create an FFT analyzer to be used with the I2S input
+FFTAnalyzer fftAnalyzer(fftSize);
+
 void setup() {
+// Open serial communications and wait for port to open:
+  // A baud rate of 115200 is used instead of 9600 for a faster data rate
+  // on non-native USB ports
   Serial.begin(115200);
- 
-  if(!I2S.begin(I2S_PHILIPS_MODE, 44100, 16)){ // controller device
-  
+  while (!Serial) {
+    ; // wait for serial port to connect. Needed for native USB port only
   }
-  Serial.println("I2S init success");
-  
+
+  // setup the I2S audio input for the sample rate with 32-bits per sample
+  if (!AudioInI2S.begin(sampleRate, 32)) {
+    Serial.println("Failed to initialize I2S input!");
+    while (1); // do nothing
+  }
+
+  // configure the I2S input as the input for the FFT analyzer
+  if (!fftAnalyzer.input(AudioInI2S)) {
+    Serial.println("Failed to set FFT analyzer input!");
+    while (1); // do nothing
+  }
 }
 
 void loop() {
-  I2S.read(i2sReadrawBuff,100);
-  //Output Right Channel Data
-  //Serial.println((int16_t)(i2sReadrawBuff[2]|i2sReadrawBuff[3]<<8));
-  //Output Left Channel Data
-  Serial.println((int16_t)(i2sReadrawBuff[0]|i2sReadrawBuff[1]<<8));
+  if (fftAnalyzer.available()) {
+    fftAnalyzer.read(spectrum, spectrumSize);
+
+    for (int i = 0; i < spectrumSize; i++) {
+      Serial.print((i * sampleRate) / fftSize); // Frequency
+      Serial.print(","); // CSV delimiter
+      Serial.println(spectrum[i]); // Amplitude
+    }
+  }
 }
